@@ -14,11 +14,14 @@ declare(strict_types=1);
 namespace League\Uri;
 
 use Deprecated;
+use DOMDocument;
+use DOMException;
 use finfo;
 use League\Uri\Contracts\Conditionable;
 use League\Uri\Contracts\UriComponentInterface;
 use League\Uri\Contracts\UriException;
 use League\Uri\Contracts\UriInterface;
+use League\Uri\Contracts\UriStringProvider;
 use League\Uri\Exceptions\ConversionFailed;
 use League\Uri\Exceptions\MissingFeature;
 use League\Uri\Exceptions\SyntaxError;
@@ -75,7 +78,7 @@ use const PREG_SPLIT_NO_EMPTY;
  * @phpstan-import-type ComponentMap from UriString
  * @phpstan-import-type InputComponentMap from UriString
  */
-final class Uri implements UriInterface, Conditionable
+final class Uri implements UriInterface, Conditionable, UriStringProvider
 {
     /**
      * RFC3986 invalid characters.
@@ -1040,6 +1043,42 @@ final class Uri implements UriInterface, Conditionable
     }
 
     /**
+     * Returns the HTML string representation of the anchor tag with the current instance as its href attribute.
+     *
+     * @throws DOMException
+     */
+    public function toAnchorTag(?string $content = null, ?string $class = null, ?string $target = null): string
+    {
+        $doc = new DOMDocument('1.0', 'utf-8');
+        $doc->preserveWhiteSpace = false;
+        $doc->formatOutput = true;
+        $anchor = $doc->createElement('a');
+        $anchor->setAttribute('href', $this->toString());
+        if (null !== $class) {
+            $anchor->setAttribute('class', $class);
+        }
+        if (null !== $target) {
+            $anchor->setAttribute('target', $target);
+        }
+
+        $anchor->appendChild($doc->createTextNode($content ?? $this->toDisplayString()));
+        $anchor = $doc->saveHTML($anchor);
+        if (false === $anchor) {
+            throw new DOMException('The link generation failed.');
+        }
+
+        return $anchor;
+    }
+
+    /**
+     * Returns the markdown string representation of the anchor tag with the current instance as its href attribute.
+     */
+    public function toMarkdown(?string $content = null): string
+    {
+        return '['.($content ?? $this->toDisplayString()).']('.$this->toString().')';
+    }
+
+    /**
      * Returns the Unix filesystem path.
      *
      * The method will return null if a scheme is present and is not the `file` scheme
@@ -1208,9 +1247,9 @@ final class Uri implements UriInterface, Conditionable
         return $this->fragment;
     }
 
-    public function getOrigin(): ?self
+    public function getOrigin(): ?string
     {
-        return null === $this->origin ? null : Uri::new($this->origin);
+        return $this->origin;
     }
 
     public function when(callable|bool $condition, callable $onSuccess, ?callable $onFail = null): static
@@ -1429,7 +1468,7 @@ final class Uri implements UriInterface, Conditionable
             return true;
         }
 
-        return $this->origin !== (string) $origin;
+        return $this->origin !== $origin;
     }
 
     public function isSameOrigin(Stringable|string $uri): bool
